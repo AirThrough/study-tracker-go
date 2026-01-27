@@ -59,7 +59,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.auth.CreateToken(user.ID)
+	token, err := h.auth.CreateToken(user.ID, user.Role)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create token")
 		return

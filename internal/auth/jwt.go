@@ -9,14 +9,20 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"study-tracker-backend/internal/models"
 )
 
 type contextKey string
 
-const UserIDKey contextKey = "userID"
+const (
+	UserIDKey contextKey = "userID"
+	RoleKey   contextKey = "role"
+)
 
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID string      `json:"user_id"`
+	Role   models.Role `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -28,9 +34,10 @@ func NewService(secret string) *Service {
 	return &Service{secret: []byte(secret)}
 }
 
-func (s *Service) CreateToken(userID string) (string, error) {
+func (s *Service) CreateToken(userID string, role models.Role) (string, error) {
 	claims := Claims{
 		UserID: userID,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -80,7 +87,9 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, RoleKey, claims.Role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -88,4 +97,14 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(UserIDKey).(string)
 	return userID, ok
+}
+
+func RoleFromContext(ctx context.Context) (models.Role, bool) {
+	role, ok := ctx.Value(RoleKey).(models.Role)
+	return role, ok
+}
+
+func IsAdmin(ctx context.Context) bool {
+	role, ok := RoleFromContext(ctx)
+	return ok && role == models.RoleAdmin
 }

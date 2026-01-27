@@ -15,6 +15,7 @@ import (
 
 var ErrNotFound = errors.New("user not found")
 var ErrEmailTaken = errors.New("email already in use")
+var ErrLastAdmin = errors.New("cannot remove the last admin")
 
 type UserRepository struct {
 	pool *pgxpool.Pool
@@ -28,25 +29,28 @@ type CreateUserInput struct {
 	Email        string
 	PasswordHash string
 	Name         string
+	Role         models.Role
 }
 
 type UpdateUserInput struct {
 	Email *string
 	Name  *string
+	Role  *models.Role
 }
 
 func (r *UserRepository) Create(ctx context.Context, input CreateUserInput) (models.User, error) {
 	const query = `
-		INSERT INTO users (email, password_hash, name)
-		VALUES ($1, $2, $3)
-		RETURNING id, email, name, deleted_at, created_at, updated_at
+		INSERT INTO users (email, password_hash, name, role)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, email, name, role, deleted_at, created_at, updated_at
 	`
 
 	var user models.User
-	err := r.pool.QueryRow(ctx, query, input.Email, input.PasswordHash, input.Name).Scan(
+	err := r.pool.QueryRow(ctx, query, input.Email, input.PasswordHash, input.Name, input.Role).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Name,
+		&user.Role,
 		&user.DeletedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -63,7 +67,7 @@ func (r *UserRepository) Create(ctx context.Context, input CreateUserInput) (mod
 
 func (r *UserRepository) GetByID(ctx context.Context, id string) (models.User, error) {
 	const query = `
-		SELECT id, email, name, deleted_at, created_at, updated_at
+		SELECT id, email, name, role, deleted_at, created_at, updated_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -73,6 +77,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (models.User, e
 		&user.ID,
 		&user.Email,
 		&user.Name,
+		&user.Role,
 		&user.DeletedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -89,7 +94,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (models.User, e
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (models.User, string, error) {
 	const query = `
-		SELECT id, email, name, password_hash, deleted_at, created_at, updated_at
+		SELECT id, email, name, role, password_hash, deleted_at, created_at, updated_at
 		FROM users
 		WHERE email = $1 AND deleted_at IS NULL
 	`
@@ -100,6 +105,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (models.U
 		&user.ID,
 		&user.Email,
 		&user.Name,
+		&user.Role,
 		&passwordHash,
 		&user.DeletedAt,
 		&user.CreatedAt,
@@ -117,7 +123,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (models.U
 
 func (r *UserRepository) List(ctx context.Context) ([]models.User, error) {
 	const query = `
-		SELECT id, email, name, deleted_at, created_at, updated_at
+		SELECT id, email, name, role, deleted_at, created_at, updated_at
 		FROM users
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -136,6 +142,7 @@ func (r *UserRepository) List(ctx context.Context) ([]models.User, error) {
 			&user.ID,
 			&user.Email,
 			&user.Name,
+			&user.Role,
 			&user.DeletedAt,
 			&user.CreatedAt,
 			&user.UpdatedAt,
@@ -153,21 +160,40 @@ func (r *UserRepository) List(ctx context.Context) ([]models.User, error) {
 }
 
 func (r *UserRepository) Update(ctx context.Context, id string, input UpdateUserInput) (models.User, error) {
+	existing, err := r.GetByID(ctx, id)
+	if err != nil {
+		return models.User{}, err
+	}
+
+	if input.Role != nil && existing.Role == models.RoleAdmin && *input.Role != models.RoleAdmin {
+		var adminCount int
+		if err := r.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM users WHERE role = $1 AND deleted_at IS NULL
+		`, models.RoleAdmin).Scan(&adminCount); err != nil {
+			return models.User{}, fmt.Errorf("count admins: %w", err)
+		}
+		if adminCount <= 1 {
+			return models.User{}, ErrLastAdmin
+		}
+	}
+
 	const query = `
 		UPDATE users
 		SET
 			email = COALESCE($2, email),
 			name = COALESCE($3, name),
+			role = COALESCE($4, role),
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, email, name, deleted_at, created_at, updated_at
+		RETURNING id, email, name, role, deleted_at, created_at, updated_at
 	`
 
 	var user models.User
-	err := r.pool.QueryRow(ctx, query, id, input.Email, input.Name).Scan(
+	err = r.pool.QueryRow(ctx, query, id, input.Email, input.Name, input.Role).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Name,
+		&user.Role,
 		&user.DeletedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -186,6 +212,23 @@ func (r *UserRepository) Update(ctx context.Context, id string, input UpdateUser
 }
 
 func (r *UserRepository) SoftDelete(ctx context.Context, id string) error {
+	user, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if user.Role == models.RoleAdmin {
+		var adminCount int
+		if err := r.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM users WHERE role = $1 AND deleted_at IS NULL
+		`, models.RoleAdmin).Scan(&adminCount); err != nil {
+			return fmt.Errorf("count admins: %w", err)
+		}
+		if adminCount <= 1 {
+			return ErrLastAdmin
+		}
+	}
+
 	const query = `
 		UPDATE users
 		SET deleted_at = $2, updated_at = NOW()

@@ -37,6 +37,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if err := database.EnsureDefaultAdmin(ctx, pool); err != nil {
+		log.Fatal(err)
+	}
+
 	userRepo := repository.NewUserRepository(pool)
 	authService := auth.NewService(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(userRepo, authService)
@@ -56,14 +60,14 @@ func main() {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
-		r.Post("/users", userHandler.Create)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authService.Middleware)
 
 			r.Get("/users/me", userHandler.Me)
-			r.Get("/users", userHandler.List)
 			r.Get("/users/{id}", userHandler.Get)
+			r.Post("/users", userHandler.Create)
+			r.Get("/users", userHandler.List)
 			r.Put("/users/{id}", userHandler.Update)
 			r.Delete("/users/{id}", userHandler.Delete)
 		})

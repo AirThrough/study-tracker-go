@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -23,13 +25,28 @@ func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	sql, err := os.ReadFile("migrations/001_create_users.sql")
+	entries, err := os.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("read migration: %w", err)
+		return fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	if _, err := pool.Exec(ctx, string(sql)); err != nil {
-		return fmt.Errorf("run migration: %w", err)
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			files = append(files, entry.Name())
+		}
+	}
+	sort.Strings(files)
+
+	for _, file := range files {
+		sql, err := os.ReadFile("migrations/" + file)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", file, err)
+		}
+
+		if _, err := pool.Exec(ctx, string(sql)); err != nil {
+			return fmt.Errorf("run migration %s: %w", file, err)
+		}
 	}
 
 	return nil
