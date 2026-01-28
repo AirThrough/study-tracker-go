@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -12,14 +13,23 @@ import (
 )
 
 type AuthHandler struct {
-	users *repository.UserRepository
-	auth  *auth.Service
+	users         *repository.UserRepository
+	refreshTokens *repository.RefreshTokenRepository
+	auth          *auth.Service
+	cookieSecure  bool
 }
 
-func NewAuthHandler(users *repository.UserRepository, authService *auth.Service) *AuthHandler {
+func NewAuthHandler(
+	users *repository.UserRepository,
+	refreshTokens *repository.RefreshTokenRepository,
+	authService *auth.Service,
+	cookieSecure bool,
+) *AuthHandler {
 	return &AuthHandler{
-		users: users,
-		auth:  authService,
+		users:         users,
+		refreshTokens: refreshTokens,
+		auth:          authService,
+		cookieSecure:  cookieSecure,
 	}
 }
 
@@ -35,7 +45,7 @@ type authResponse struct {
 // Login godoc
 //
 //	@Summary		Login
-//	@Description	Authenticate and receive a JWT
+//	@Description	Authenticate and receive a JWT access token. A refresh token is set as an HttpOnly cookie.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -75,5 +85,100 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rawRefresh, refreshHash, err := auth.GenerateRefreshToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create refresh token")
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(auth.RefreshTokenTTL)
+	if err := h.refreshTokens.Create(r.Context(), user.ID, refreshHash, expiresAt); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to store refresh token")
+		return
+	}
+
+	auth.SetRefreshTokenCookie(w, rawRefresh, h.cookieSecure)
 	writeJSON(w, http.StatusOK, authResponse{Token: token})
+}
+
+// Refresh godoc
+//
+//	@Summary		Refresh access token
+//	@Description	Exchange the refresh token cookie for a new access token
+//	@Tags			auth
+//	@Produce		json
+//	@Success		200	{object}	authResponse
+//	@Router			/api/auth/refresh [post]
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(auth.RefreshTokenCookie)
+	if err != nil || cookie.Value == "" {
+		writeError(w, http.StatusUnauthorized, "missing refresh token")
+		return
+	}
+
+	tokenHash := auth.HashRefreshToken(cookie.Value)
+	userID, err := h.refreshTokens.GetValid(r.Context(), tokenHash)
+	if err != nil {
+		if errors.Is(err, repository.ErrRefreshTokenNotFound) {
+			auth.ClearRefreshTokenCookie(w, h.cookieSecure)
+			writeError(w, http.StatusUnauthorized, "invalid refresh token")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to validate refresh token")
+		return
+	}
+
+	user, err := h.users.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			auth.ClearRefreshTokenCookie(w, h.cookieSecure)
+			_ = h.refreshTokens.Delete(r.Context(), tokenHash)
+			writeError(w, http.StatusUnauthorized, "invalid refresh token")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to refresh token")
+		return
+	}
+
+	if err := h.refreshTokens.Delete(r.Context(), tokenHash); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to rotate refresh token")
+		return
+	}
+
+	rawRefresh, refreshHash, err := auth.GenerateRefreshToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create refresh token")
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(auth.RefreshTokenTTL)
+	if err := h.refreshTokens.Create(r.Context(), user.ID, refreshHash, expiresAt); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to store refresh token")
+		return
+	}
+
+	token, err := h.auth.CreateToken(user.ID, user.Role)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create token")
+		return
+	}
+
+	auth.SetRefreshTokenCookie(w, rawRefresh, h.cookieSecure)
+	writeJSON(w, http.StatusOK, authResponse{Token: token})
+}
+
+// Logout godoc
+//
+//	@Summary		Logout
+//	@Description	Revoke the refresh token and clear the refresh token cookie
+//	@Tags			auth
+//	@Success		204
+//	@Router			/api/auth/logout [post]
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(auth.RefreshTokenCookie); err == nil && cookie.Value != "" {
+		_ = h.refreshTokens.Delete(r.Context(), auth.HashRefreshToken(cookie.Value))
+	}
+
+	auth.ClearRefreshTokenCookie(w, h.cookieSecure)
+	w.WriteHeader(http.StatusNoContent)
 }
