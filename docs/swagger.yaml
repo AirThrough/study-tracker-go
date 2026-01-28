@@ -23,7 +23,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticate and receive a JWT
+      description: Authenticate and receive a JWT access token. A refresh token is
+        set as an HttpOnly cookie.
       parameters:
       - description: Credentials
         in: body
@@ -39,6 +40,28 @@ paths:
           schema:
             $ref: '#/definitions/handlers.authResponse'
       summary: Login
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      description: Revoke the refresh token and clear the refresh token cookie
+      responses:
+        "204":
+          description: No Content
+      summary: Logout
+      tags:
+      - auth
+  /api/auth/refresh:
+    post:
+      description: Exchange the refresh token cookie for a new access token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.authResponse'
+      summary: Refresh access token
       tags:
       - auth
 securityDefinitions:
