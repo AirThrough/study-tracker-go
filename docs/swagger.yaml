@@ -1,0 +1,50 @@
+basePath: /
+definitions:
+  handlers.authResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  handlers.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: REST API for the study tracker backend
+  title: Study Tracker API
+  version: "1.0"
+paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate and receive a JWT
+      parameters:
+      - description: Credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.authResponse'
+      summary: Login
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT token. Format: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

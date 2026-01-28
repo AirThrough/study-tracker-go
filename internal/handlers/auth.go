@@ -32,6 +32,16 @@ type authResponse struct {
 	Token string `json:"token"`
 }
 
+// Login godoc
+//
+//	@Summary		Login
+//	@Description	Authenticate and receive a JWT
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		loginRequest	true	"Credentials"
+//	@Success		200		{object}	authResponse
+//	@Router			/api/auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

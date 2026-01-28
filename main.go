@@ -1,3 +1,14 @@
+// @title           Study Tracker API
+// @version         1.0
+// @description     REST API for the study tracker backend
+//
+// @host            localhost:8080
+// @BasePath        /
+//
+// @securityDefinitions.apikey BearerAuth
+// @in                          header
+// @name                        Authorization
+// @description                 JWT token. Format: Bearer {token}
 package main
 
 import (
@@ -17,6 +28,10 @@ import (
 	"study-tracker-backend/internal/database"
 	"study-tracker-backend/internal/handlers"
 	"study-tracker-backend/internal/repository"
+
+	_ "study-tracker-backend/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func main() {
@@ -59,6 +74,7 @@ func main() {
 	})
 
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/swagger/*", httpSwagger.Handler())
 		r.Post("/auth/login", authHandler.Login)
 
 		r.Group(func(r chi.Router) {
