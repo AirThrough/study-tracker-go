@@ -111,7 +111,7 @@
             "get": {
                 "security": [
                     {
-                        "BearerAuth": []
+                        "token": []
                     }
                 ],
                 "description": "Return the authenticated user's profile",
@@ -218,8 +218,7 @@
         }
     },
     "securityDefinitions": {
-        "BearerAuth": {
-            "description": "JWT token. Format: Bearer {token}",
+        "token": {
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

@@ -73,19 +73,32 @@ func (s *Service) ParseToken(tokenString string) (Claims, error) {
 	return *claims, nil
 }
 
+func bearerTokenFromHeader(authHeader string) (string, bool) {
+	authHeader = strings.TrimSpace(authHeader)
+	if authHeader == "" {
+		return "", false
+	}
+
+	const prefix = "Bearer "
+	if len(authHeader) > len(prefix) && strings.EqualFold(authHeader[:len(prefix)], prefix) {
+		return strings.TrimSpace(authHeader[len(prefix):]), true
+	}
+
+	return authHeader, true
+}
+
 func (s *Service) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString, ok := bearerTokenFromHeader(r.Header.Get("Authorization"))
+		if !ok {
 			apperrors.Write(w, apperrors.New(
 				apperrors.CodeAuthInvalidHeader,
 				http.StatusUnauthorized,
-				errors.New("missing or invalid authorization header"),
+				errors.New("missing authorization header"),
 			))
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := s.ParseToken(tokenString)
 		if err != nil {
 			apperrors.Write(w, apperrors.New(

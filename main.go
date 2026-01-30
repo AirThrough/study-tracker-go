@@ -5,10 +5,9 @@
 // @host            localhost:8080
 // @BasePath        /
 //
-// @securityDefinitions.apikey BearerAuth
+// @securityDefinitions.apikey token
 // @in                          header
 // @name                        Authorization
-// @description                 JWT token. Format: Bearer {token}
 package main
 
 import (
@@ -26,6 +25,7 @@ import (
 	"study-tracker-backend/internal/auth"
 	"study-tracker-backend/internal/config"
 	"study-tracker-backend/internal/database"
+	"study-tracker-backend/internal/docs"
 	"study-tracker-backend/internal/handlers"
 	"study-tracker-backend/internal/repository"
 
@@ -75,7 +75,11 @@ func main() {
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/swagger/*", httpSwagger.Handler())
+		r.Get("/swagger/*", httpSwagger.Handler(
+			httpSwagger.BeforeScript(docs.SwaggerBeforeScript),
+			httpSwagger.AfterScript(docs.SwaggerAfterScript),
+			httpSwagger.PersistAuthorization(true),
+		))
 		r.Post("/auth/login", authHandler.Login)
 		r.Post("/auth/refresh", authHandler.Refresh)
 		r.Post("/auth/logout", authHandler.Logout)

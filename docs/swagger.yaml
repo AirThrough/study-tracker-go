@@ -137,13 +137,12 @@ paths:
           schema:
             $ref: '#/definitions/handlers.errorResponse'
       security:
-      - BearerAuth: []
+      - token: []
       summary: Get current user
       tags:
       - users
 securityDefinitions:
-  BearerAuth:
-    description: 'JWT token. Format: Bearer {token}'
+  token:
     in: header
     name: Authorization
     type: apiKey

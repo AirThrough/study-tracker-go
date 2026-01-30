@@ -214,7 +214,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 //	@Description	Return the authenticated user's profile
 //	@Tags			users
 //	@Produce		json
-//	@Security		BearerAuth
+//	@Security		token
 //	@Success		200	{object}	models.User
 //	@Failure		401	{object}	errorResponse
 //	@Failure		404	{object}	errorResponse

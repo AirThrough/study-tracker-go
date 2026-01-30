@@ -117,7 +117,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "BearerAuth": []
+                        "token": []
                     }
                 ],
                 "description": "Return the authenticated user's profile",
@@ -224,8 +224,7 @@ const docTemplate = `{
         }
     },
     "securityDefinitions": {
-        "BearerAuth": {
-            "description": "JWT token. Format: Bearer {token}",
+        "token": {
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
