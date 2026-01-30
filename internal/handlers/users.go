@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"study-tracker-backend/internal/apperrors"
 	"study-tracker-backend/internal/auth"
 	"study-tracker-backend/internal/models"
 	"study-tracker-backend/internal/repository"
@@ -40,23 +41,23 @@ type updateUserRequest struct {
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAdmin(r.Context()) {
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeAppError(w, apperrors.CodeForbidden, http.StatusForbidden, errors.New("admin access required"))
 		return
 	}
 
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeAppError(w, apperrors.CodeInvalidRequestBody, http.StatusBadRequest, err)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" || req.Name == "" {
-		writeError(w, http.StatusBadRequest, "email, password, and name are required")
+		writeAppError(w, apperrors.CodeValidationRequired, http.StatusBadRequest, errors.New("email, password, and name are required"))
 		return
 	}
 
 	if len(req.Password) < 8 {
-		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		writeAppError(w, apperrors.CodeValidationPasswordShort, http.StatusBadRequest, errors.New("password must be at least 8 characters"))
 		return
 	}
 
@@ -64,7 +65,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Role != nil {
 		parsedRole := models.Role(*req.Role)
 		if !parsedRole.IsValid() {
-			writeError(w, http.StatusBadRequest, "role must be ADMIN or USER")
+			writeAppError(w, apperrors.CodeValidationInvalidRole, http.StatusBadRequest, errors.New("role must be ADMIN or USER"))
 			return
 		}
 		role = parsedRole
@@ -72,7 +73,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		writeAppError(w, apperrors.CodePasswordHashFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -84,10 +85,10 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrEmailTaken) {
-			writeError(w, http.StatusConflict, "email already in use")
+			writeAppError(w, apperrors.CodeUserEmailTaken, http.StatusConflict, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to create user")
+		writeAppError(w, apperrors.CodeUserCreateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -96,13 +97,13 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAdmin(r.Context()) {
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeAppError(w, apperrors.CodeForbidden, http.StatusForbidden, errors.New("admin access required"))
 		return
 	}
 
 	users, err := h.users.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list users")
+		writeAppError(w, apperrors.CodeUserListFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -112,17 +113,17 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !canReadUser(r, id) {
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeAppError(w, apperrors.CodeForbidden, http.StatusForbidden, errors.New("access denied"))
 		return
 	}
 
 	user, err := h.users.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
+			writeAppError(w, apperrors.CodeUserNotFound, http.StatusNotFound, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to get user")
+		writeAppError(w, apperrors.CodeUserGetFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -131,7 +132,7 @@ func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAdmin(r.Context()) {
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeAppError(w, apperrors.CodeForbidden, http.StatusForbidden, errors.New("admin access required"))
 		return
 	}
 
@@ -139,12 +140,12 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req updateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeAppError(w, apperrors.CodeInvalidRequestBody, http.StatusBadRequest, err)
 		return
 	}
 
 	if req.Email == nil && req.Name == nil && req.Role == nil {
-		writeError(w, http.StatusBadRequest, "at least one field is required")
+		writeAppError(w, apperrors.CodeValidationNoFields, http.StatusBadRequest, errors.New("at least one field is required"))
 		return
 	}
 
@@ -152,7 +153,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Role != nil {
 		parsedRole := models.Role(*req.Role)
 		if !parsedRole.IsValid() {
-			writeError(w, http.StatusBadRequest, "role must be ADMIN or USER")
+			writeAppError(w, apperrors.CodeValidationInvalidRole, http.StatusBadRequest, errors.New("role must be ADMIN or USER"))
 			return
 		}
 		role = &parsedRole
@@ -165,18 +166,18 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
+			writeAppError(w, apperrors.CodeUserNotFound, http.StatusNotFound, err)
 			return
 		}
 		if errors.Is(err, repository.ErrEmailTaken) {
-			writeError(w, http.StatusConflict, "email already in use")
+			writeAppError(w, apperrors.CodeUserEmailTaken, http.StatusConflict, err)
 			return
 		}
 		if errors.Is(err, repository.ErrLastAdmin) {
-			writeError(w, http.StatusConflict, "cannot demote the last admin")
+			writeAppError(w, apperrors.CodeUserLastAdmin, http.StatusConflict, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to update user")
+		writeAppError(w, apperrors.CodeUserUpdateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -185,7 +186,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAdmin(r.Context()) {
-		writeError(w, http.StatusForbidden, "forbidden")
+		writeAppError(w, apperrors.CodeForbidden, http.StatusForbidden, errors.New("admin access required"))
 		return
 	}
 
@@ -193,14 +194,14 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.users.SoftDelete(r.Context(), id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
+			writeAppError(w, apperrors.CodeUserNotFound, http.StatusNotFound, err)
 			return
 		}
 		if errors.Is(err, repository.ErrLastAdmin) {
-			writeError(w, http.StatusConflict, "cannot delete the last admin")
+			writeAppError(w, apperrors.CodeUserLastAdmin, http.StatusConflict, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to delete user")
+		writeAppError(w, apperrors.CodeUserDeleteFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -215,23 +216,23 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Success		200	{object}	models.User
-//	@Failure		401	{object}	handlers.errorResponse
-//	@Failure		404	{object}	handlers.errorResponse
+//	@Failure		401	{object}	errorResponse
+//	@Failure		404	{object}	errorResponse
 //	@Router			/api/users/me [get]
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeAppError(w, apperrors.CodeUnauthorized, http.StatusUnauthorized, errors.New("user id not found in context"))
 		return
 	}
 
 	user, err := h.users.GetByID(r.Context(), userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "user not found")
+			writeAppError(w, apperrors.CodeUserNotFound, http.StatusNotFound, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to get user")
+		writeAppError(w, apperrors.CodeUserGetFailed, http.StatusInternalServerError, err)
 		return
 	}
 
