@@ -8,9 +8,10 @@ import (
 )
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	JWTSecret   string
+	Port         string
+	DatabaseURL  string
+	JWTSecret    string
+	CookieSecure bool
 }
 
 func Load() (Config, error) {
@@ -32,8 +33,9 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Port:        port,
-		DatabaseURL: databaseURL,
-		JWTSecret:   jwtSecret,
+		Port:         port,
+		DatabaseURL:  databaseURL,
+		JWTSecret:    jwtSecret,
+		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
 	}, nil
 }

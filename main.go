@@ -57,8 +57,9 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepository(pool)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
 	authService := auth.NewService(cfg.JWTSecret)
-	authHandler := handlers.NewAuthHandler(userRepo, authService)
+	authHandler := handlers.NewAuthHandler(userRepo, refreshTokenRepo, authService, cfg.CookieSecure)
 	userHandler := handlers.NewUserHandler(userRepo, authService)
 
 	r := chi.NewRouter()
@@ -76,6 +77,8 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/swagger/*", httpSwagger.Handler())
 		r.Post("/auth/login", authHandler.Login)
+		r.Post("/auth/refresh", authHandler.Refresh)
+		r.Post("/auth/logout", authHandler.Logout)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authService.Middleware)
