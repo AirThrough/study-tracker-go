@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"study-tracker-backend/internal/apperrors"
 	"study-tracker-backend/internal/auth"
 	"study-tracker-backend/internal/repository"
 )
@@ -51,49 +52,52 @@ type authResponse struct {
 //	@Produce		json
 //	@Param			body	body		loginRequest	true	"Credentials"
 //	@Success		200		{object}	authResponse
+//	@Failure		400		{object}	errorResponse
+//	@Failure		401		{object}	errorResponse
+//	@Failure		500		{object}	errorResponse
 //	@Router			/api/auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeAppError(w, apperrors.CodeInvalidRequestBody, http.StatusBadRequest, err)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
+		writeAppError(w, apperrors.CodeValidationRequired, http.StatusBadRequest, errors.New("email and password are required"))
 		return
 	}
 
 	user, passwordHash, err := h.users.GetByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			writeAppError(w, apperrors.CodeAuthInvalidCredentials, http.StatusUnauthorized, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to authenticate")
+		writeAppError(w, apperrors.CodeAuthenticateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		writeAppError(w, apperrors.CodeAuthInvalidCredentials, http.StatusUnauthorized, err)
 		return
 	}
 
 	token, err := h.auth.CreateToken(user.ID, user.Role)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create token")
+		writeAppError(w, apperrors.CodeTokenCreateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	rawRefresh, refreshHash, err := auth.GenerateRefreshToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenCreateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	expiresAt := time.Now().UTC().Add(auth.RefreshTokenTTL)
 	if err := h.refreshTokens.Create(r.Context(), user.ID, refreshHash, expiresAt); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to store refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenStoreFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -108,11 +112,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 //	@Tags			auth
 //	@Produce		json
 //	@Success		200	{object}	authResponse
+//	@Failure		401	{object}	errorResponse
+//	@Failure		500	{object}	errorResponse
 //	@Router			/api/auth/refresh [post]
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(auth.RefreshTokenCookie)
 	if err != nil || cookie.Value == "" {
-		writeError(w, http.StatusUnauthorized, "missing refresh token")
+		writeAppError(w, apperrors.CodeAuthRefreshMissing, http.StatusUnauthorized, errors.New("refresh token cookie is missing"))
 		return
 	}
 
@@ -121,10 +127,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, repository.ErrRefreshTokenNotFound) {
 			auth.ClearRefreshTokenCookie(w, h.cookieSecure)
-			writeError(w, http.StatusUnauthorized, "invalid refresh token")
+			writeAppError(w, apperrors.CodeAuthRefreshInvalid, http.StatusUnauthorized, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to validate refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenValidateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -133,33 +139,33 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, repository.ErrNotFound) {
 			auth.ClearRefreshTokenCookie(w, h.cookieSecure)
 			_ = h.refreshTokens.Delete(r.Context(), tokenHash)
-			writeError(w, http.StatusUnauthorized, "invalid refresh token")
+			writeAppError(w, apperrors.CodeAuthRefreshInvalid, http.StatusUnauthorized, err)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to refresh token")
+		writeAppError(w, apperrors.CodeRefreshFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	if err := h.refreshTokens.Delete(r.Context(), tokenHash); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to rotate refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenRotateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	rawRefresh, refreshHash, err := auth.GenerateRefreshToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenCreateFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	expiresAt := time.Now().UTC().Add(auth.RefreshTokenTTL)
 	if err := h.refreshTokens.Create(r.Context(), user.ID, refreshHash, expiresAt); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to store refresh token")
+		writeAppError(w, apperrors.CodeRefreshTokenStoreFailed, http.StatusInternalServerError, err)
 		return
 	}
 
 	token, err := h.auth.CreateToken(user.ID, user.Role)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create token")
+		writeAppError(w, apperrors.CodeTokenCreateFailed, http.StatusInternalServerError, err)
 		return
 	}
 

@@ -3,11 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+
+	"study-tracker-backend/internal/apperrors"
 )
 
-type errorResponse struct {
-	Error string `json:"error"`
-}
+type errorResponse = apperrors.Response
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -15,6 +15,6 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, errorResponse{Error: message})
+func writeAppError(w http.ResponseWriter, code apperrors.Code, status int, err error) {
+	apperrors.Write(w, apperrors.New(code, status, err))
 }

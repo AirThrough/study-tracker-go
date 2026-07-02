@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"study-tracker-backend/internal/apperrors"
 	"study-tracker-backend/internal/models"
 )
 
@@ -76,14 +77,22 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "missing or invalid authorization header", http.StatusUnauthorized)
+			apperrors.Write(w, apperrors.New(
+				apperrors.CodeAuthInvalidHeader,
+				http.StatusUnauthorized,
+				errors.New("missing or invalid authorization header"),
+			))
 			return
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := s.ParseToken(tokenString)
 		if err != nil {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			apperrors.Write(w, apperrors.New(
+				apperrors.CodeAuthInvalidToken,
+				http.StatusUnauthorized,
+				err,
+			))
 			return
 		}
 
