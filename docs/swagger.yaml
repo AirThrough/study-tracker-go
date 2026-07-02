@@ -5,11 +5,41 @@ definitions:
       token:
         type: string
     type: object
+  handlers.errorResponse:
+    properties:
+      error:
+        type: string
+    type: object
   handlers.loginRequest:
     properties:
       email:
         type: string
       password:
+        type: string
+    type: object
+  models.Role:
+    enum:
+    - ADMIN
+    - USER
+    type: string
+    x-enum-varnames:
+    - RoleAdmin
+    - RoleUser
+  models.User:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        $ref: '#/definitions/models.Role'
+      updated_at:
         type: string
     type: object
 host: localhost:8080
@@ -64,6 +94,29 @@ paths:
       summary: Refresh access token
       tags:
       - auth
+  /api/users/me:
+    get:
+      description: Return the authenticated user's profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.errorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - users
 securityDefinitions:
   BearerAuth:
     description: 'JWT token. Format: Bearer {token}'

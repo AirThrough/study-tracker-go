@@ -207,6 +207,17 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Me godoc
+//
+//	@Summary		Get current user
+//	@Description	Return the authenticated user's profile
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	models.User
+//	@Failure		401	{object}	handlers.errorResponse
+//	@Failure		404	{object}	handlers.errorResponse
+//	@Router			/api/users/me [get]
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
