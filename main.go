@@ -27,6 +27,7 @@ import (
 	"study-tracker-backend/internal/database"
 	"study-tracker-backend/internal/docs"
 	"study-tracker-backend/internal/handlers"
+	appmiddleware "study-tracker-backend/internal/middleware"
 	"study-tracker-backend/internal/repository"
 
 	_ "study-tracker-backend/docs"
@@ -63,6 +64,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(userRepo, authService)
 
 	r := chi.NewRouter()
+	r.Use(appmiddleware.CORS(cfg.CORSAllowedOrigin))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)

@@ -8,10 +8,11 @@ import (
 )
 
 type Config struct {
-	Port         string
-	DatabaseURL  string
-	JWTSecret    string
-	CookieSecure bool
+	Port              string
+	DatabaseURL       string
+	JWTSecret         string
+	CookieSecure      bool
+	CORSAllowedOrigin string
 }
 
 func Load() (Config, error) {
@@ -32,10 +33,16 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("JWT_SECRET is required")
 	}
 
+	corsOrigin := os.Getenv("CORS_ALLOWED_ORIGIN")
+	if corsOrigin == "" {
+		corsOrigin = "http://localhost:5173"
+	}
+
 	return Config{
-		Port:         port,
-		DatabaseURL:  databaseURL,
-		JWTSecret:    jwtSecret,
-		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
+		Port:              port,
+		DatabaseURL:       databaseURL,
+		JWTSecret:         jwtSecret,
+		CookieSecure:      os.Getenv("COOKIE_SECURE") == "true",
+		CORSAllowedOrigin: corsOrigin,
 	}, nil
 }
